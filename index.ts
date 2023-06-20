@@ -63,8 +63,8 @@ function isAvailable(
         date_from = t.date_to;
       }
     });
-    if (date_to - date_from > 1000 * 60 * 5) {
-      // only return slot >= 5'
+    if (date_to - date_from > 1000 * 60 * 15) {
+      // only return slot > 15'
       return {
         date_from,
         date_to,
@@ -118,9 +118,15 @@ async function checkAvailiable(
   room: RoomInfo,
   time: Date,
 ): Promise<Availability> {
+  const date = datetime.parse(DATE, "yyyy-MM-dd");
+  const weekday = date.getDay();
+  const monday = new Date(datetime.parse(DATE, "yyyy-MM-dd").setDate(date.getDate() + 1 - weekday));
+  const sunday = new Date(datetime.parse(DATE, "yyyy-MM-dd").setDate(date.getDate() + 9 - weekday));
+
+  // sometimes week-long events get missed if only a single day is queried
   const url = `https://ethz.ch/bin/ethz/roominfo?path=/rooms/${
     encodeURIComponent(`${room.building} ${room.floor} ${room.room}`)
-  }/allocations&from=${DATE}&to=${DATE}`;
+  }/allocations&from=${datetime.format(monday, "yyyy-MM-dd")}&to=${datetime.format(sunday, "yyyy-MM-dd")}`;
 
   // console.log(url);
 
