@@ -21,15 +21,24 @@ const TIME = datetime.parse(
     ) ?? datetime.format(new Date(), "HH:mm")),
   "yyyy-MM-dd HH:mm",
 );
-const FILTER_AREA = RegExp(
-  prompt("Filter area? (regex) (Z: Zentrum, H: Hönggerberg, U: UZH)", "Z") ??
-    "Z",
+const FILTER_BDG = RegExp(
+  prompt("Filter building? (regex) [.*]", "") ??
+    "",
+  "i",
 );
-const ONLY_VARIABLE_BESTUHLUNG = !confirm(
-  "Show rooms without variable seating?",
-); // "seating": "variabel"
-const ONLY_LIST_AVAILIABLE = !confirm("Show unavailable rooms?");
-const TRIAL = confirm("Trial Mode? (check only first 10 rooms)");
+const FILTER_AREA = RegExp(
+  prompt("Filter area? (regex) (Z: Zentrum, H: Hönggerberg, U: UZH) [Z]") ??
+    (FILTER_BDG.source ? "" : "Z"),
+  "i",
+);
+const other_options = (prompt(
+  "Other config? (f: show rooms with fixed seating, u: show fully unavailable rooms, l: show rooms available later in the day, t: only check first 10 rooms, s: show number of seats) [ls]",
+) ?? "ls").toLocaleLowerCase();
+const SHOW_FIXED_SEATING = other_options.includes("f");
+const SHOW_UNAVAILABLE = other_options.includes("u");
+const SHOW_LATER = other_options.includes("l");
+const SHOW_SEATS = other_options.includes("s");
+const TRIAL = other_options.includes("t");
 
 function isAvailable(
   data: Timeslot[],
@@ -135,7 +144,8 @@ async function checkAvailiable(
 
 const roomlist = rooms.filter((r) => {
   if (!FILTER_AREA.test(r.area)) return false;
-  if (ONLY_VARIABLE_BESTUHLUNG && (!r.seating || r.seating !== "variabel")) {
+  if (!FILTER_BDG.test(r.building)) return false;
+  if (!SHOW_FIXED_SEATING && (!r.seating || r.seating !== "variabel")) {
     return false;
   }
   return true;
@@ -170,35 +180,44 @@ result.forEach((a) => {
       if (r.no_allocations) {
         ++no_allocations;
       } else if (r.future) {
-        console.log(
-          bdg +
-            colors.dim(
-              ` ${r.room.floor.padEnd(2)} ${r.room.room.padEnd(5)} Available ${
-                datetime.format(new Date(r.date_from), "HH:mm")
-              } — ${
-                colors.bold(datetime.format(new Date(r.date_to), "HH:mm"))
-              } ${(r.room.seats ? r.room.seats + " Seats" : "").padStart(10)}${
-                r.room.variable_seating
-                  ? ""
-                  : colors.brightRed(" · Fixed Seating")
-              }${
-                r.current_allocation
-                  ? colors.magenta(
-                    " · Note: Reserved for " + r.current_allocation,
-                  )
-                  : ""
-              }`,
-            ),
-        );
+        if (SHOW_LATER) {
+          console.log(
+            `${bdg} \u001b[2;9m${r.room.floor.padEnd(2)} ${
+              r.room.room.padEnd(5)
+            }\u001b[0m\u001b[2m Available \u001b[1m${
+              datetime.format(new Date(r.date_from), "HH:mm")
+            }\u001b[0m\u001b[2m -- \u001b[1m${
+              datetime.format(new Date(r.date_to), "HH:mm")
+            }\u001b[0m\u001b[2m ${
+              SHOW_SEATS
+                ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
+                : ""
+            }${
+              r.room.variable_seating
+                ? ""
+                : colors.brightRed(" · Fixed Seating")
+            }${
+              r.current_allocation
+                ? colors.magenta(
+                  " · Note: Reserved for " + r.current_allocation,
+                )
+                : ""
+            }\u001b[0m`,
+          );
+        }
       } else {
         console.log(
           `${bdg} ${r.room.floor.padEnd(2)} ${
             r.room.room.padEnd(5)
-          } Available ${datetime.format(new Date(r.date_from), "HH:mm")} — ${
-            colors.bold(datetime.format(new Date(r.date_to), "HH:mm"))
-          } ${(r.room.seats ? r.room.seats + " Seats" : "").padStart(10)}${
-            r.room.variable_seating ? "" : colors.red(" · Fixed Seating")
-          }${
+          } Available ${
+            datetime.format(new Date(r.date_from), "HH:mm")
+          } -- \u001b[1m${
+            datetime.format(new Date(r.date_to), "HH:mm")
+          }\u001b[0m ${
+            SHOW_SEATS
+              ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
+              : ""
+          }${r.room.variable_seating ? "" : colors.red(" · Fixed Seating")}${
             r.current_allocation
               ? colors.magenta(" · Note: Reserved for " + r.current_allocation)
               : ""
@@ -206,12 +225,11 @@ result.forEach((a) => {
         );
         ++available;
       }
-    } else if (!ONLY_LIST_AVAILIABLE) {
+    } else if (SHOW_UNAVAILABLE) {
       console.log(
-        bdg +
-          colors.dim(
-            ` ${r.room.floor.padEnd(2)} ${r.room.room.padEnd(5)} Unavailable`,
-          ),
+        `${bdg} \u001b[2;9m${r.room.floor.padEnd(2)} ${
+          r.room.room.padEnd(5)
+        } Unavailable\u001b[0m`,
       );
     }
   } else {
