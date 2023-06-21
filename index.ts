@@ -206,19 +206,19 @@ let failures = 0;
 let no_allocations = 0;
 let available = 0;
 let prev_bdg = "";
+const bdg = (r: Availability) =>
+  r.room.building === prev_bdg ? "   " : (prev_bdg = r.room.building).padEnd(3);
+
 result.forEach((a) => {
   if (a.status === "fulfilled") {
     const r = a.value;
-    const bdg = r.room.building === prev_bdg
-      ? "   "
-      : (prev_bdg = r.room.building).padEnd(3);
     if (r.available) {
       if (r.no_allocations) {
         ++no_allocations;
       } else if (r.future) {
         if (SHOW_LATER) {
           console.log(
-            `${bdg} \u001b[2;9m${createRoomLink(r.room)}\u001b[0m ${
+            `${bdg(r)} \u001b[2;9m${createRoomLink(r.room)}\u001b[0m ${
               createScheduleLink(
                 r.room,
                 `\u001b[2mAvailable \u001b[1m${
@@ -250,7 +250,7 @@ result.forEach((a) => {
         }
       } else {
         console.log(
-          `${bdg} ${createRoomLink(r.room)} ${
+          `${bdg(r)} ${createRoomLink(r.room)} ${
             createScheduleLink(
               r.room,
               `Available ${
@@ -277,7 +277,7 @@ result.forEach((a) => {
       }
     } else if (SHOW_UNAVAILABLE) {
       console.log(
-        `${bdg} \u001b[2;9m${createRoomLink(r.room)} Unavailable\u001b[0m`,
+        `${bdg(r)} \u001b[2;9m${createRoomLink(r.room)} Unavailable\u001b[0m`,
       );
     }
   } else {
