@@ -27,8 +27,11 @@ const FILTER_BDG = RegExp(
   "i",
 );
 const FILTER_AREA = RegExp(
-  prompt("Filter area? (regex) (Z: Zentrum, H: Hönggerberg, U: UZH) [Z]") ??
-    (FILTER_BDG.source ? "" : "Z"),
+  prompt(
+    "Filter area? (regex) (Z: Zentrum, H: Hönggerberg, U: UZH)",
+    FILTER_BDG.source ? ".*" : "Z",
+  ) ??
+    (FILTER_BDG.source ? ".*" : "Z"),
   "i",
 );
 const other_options = (prompt(
@@ -39,6 +42,37 @@ const SHOW_UNAVAILABLE = other_options.includes("u");
 const SHOW_LATER = other_options.includes("l");
 const SHOW_SEATS = other_options.includes("s");
 const TRIAL = other_options.includes("t");
+
+const date = datetime.parse(DATE, "yyyy-MM-dd");
+const weekday = date.getDay();
+const monday = new Date(
+  datetime.parse(DATE, "yyyy-MM-dd").setDate(date.getDate() + 1 - weekday),
+);
+const sunday = new Date(
+  datetime.parse(DATE, "yyyy-MM-dd").setDate(date.getDate() + 9 - weekday),
+);
+
+const DATEQUERY = `&from=${datetime.format(monday, "yyyy-MM-dd")}&to=${
+  datetime.format(sunday, "yyyy-MM-dd")
+}`;
+
+function linkify(text: string, url: string) {
+  return `\u001b]8;;${url}\u001b\\${text}\u001b]8;;\u001b\\`;
+}
+
+function createRoomLink(room: RoomInfo) {
+  return linkify(
+    `${room.floor.padEnd(2)} ${room.room.padEnd(5)}`,
+    `https://ethz.ch/staffnet/de/utils/location.html?building=${room.building}&floor=${room.floor}&room=${room.room}`,
+  );
+}
+
+function createScheduleLink(room: RoomInfo, text: string) {
+  return linkify(
+    text,
+    `https://ethz.ch/staffnet/de/service/raeume-gebaeude/rauminfo/raumdetails/allocation.html?room=${room.building}+${room.floor}+${room.room}${DATEQUERY}`,
+  );
+}
 
 function isAvailable(
   data: Timeslot[],
@@ -118,15 +152,10 @@ async function checkAvailiable(
   room: RoomInfo,
   time: Date,
 ): Promise<Availability> {
-  const date = datetime.parse(DATE, "yyyy-MM-dd");
-  const weekday = date.getDay();
-  const monday = new Date(datetime.parse(DATE, "yyyy-MM-dd").setDate(date.getDate() + 1 - weekday));
-  const sunday = new Date(datetime.parse(DATE, "yyyy-MM-dd").setDate(date.getDate() + 9 - weekday));
-
   // sometimes week-long events get missed if only a single day is queried
   const url = `https://ethz.ch/bin/ethz/roominfo?path=/rooms/${
     encodeURIComponent(`${room.building} ${room.floor} ${room.room}`)
-  }/allocations&from=${datetime.format(monday, "yyyy-MM-dd")}&to=${datetime.format(sunday, "yyyy-MM-dd")}`;
+  }/allocations${DATEQUERY}`;
 
   // console.log(url);
 
@@ -162,7 +191,8 @@ const roomlist = rooms.filter((r) => {
       floor: r.floor,
       room: r.room,
       variable_seating: r.seating === "variabel",
-      seats: r.seats,
+      seats: r.seats || r.workplaces?.toLocaleString(),
+      type: r.type,
     },
     TIME,
   )
@@ -188,13 +218,16 @@ result.forEach((a) => {
       } else if (r.future) {
         if (SHOW_LATER) {
           console.log(
-            `${bdg} \u001b[2;9m${r.room.floor.padEnd(2)} ${
-              r.room.room.padEnd(5)
-            }\u001b[0m\u001b[2m Available \u001b[1m${
-              datetime.format(new Date(r.date_from), "HH:mm")
-            }\u001b[0m\u001b[2m -- \u001b[1m${
-              datetime.format(new Date(r.date_to), "HH:mm")
-            }\u001b[0m\u001b[2m ${
+            `${bdg} \u001b[2;9m${createRoomLink(r.room)}\u001b[0m ${
+              createScheduleLink(
+                r.room,
+                `\u001b[2mAvailable \u001b[1m${
+                  datetime.format(new Date(r.date_from), "HH:mm")
+                }\u001b[0m\u001b[2m -- \u001b[1m${
+                  datetime.format(new Date(r.date_to), "HH:mm")
+                }\u001b[0m`,
+              )
+            }\u001b[2m ${
               SHOW_SEATS
                 ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
                 : ""
@@ -202,6 +235,10 @@ result.forEach((a) => {
               r.room.variable_seating
                 ? ""
                 : colors.brightRed(" · Fixed Seating")
+            }${
+              r.room.type !== "Seminare / Kurse"
+                ? " \u001b[33m· Type: " + r.room.type + "\u001b[39m"
+                : ""
             }${
               r.current_allocation
                 ? colors.magenta(
@@ -213,17 +250,24 @@ result.forEach((a) => {
         }
       } else {
         console.log(
-          `${bdg} ${r.room.floor.padEnd(2)} ${
-            r.room.room.padEnd(5)
-          } Available ${
-            datetime.format(new Date(r.date_from), "HH:mm")
-          } -- \u001b[1m${
-            datetime.format(new Date(r.date_to), "HH:mm")
+          `${bdg} ${createRoomLink(r.room)} ${
+            createScheduleLink(
+              r.room,
+              `Available ${
+                datetime.format(new Date(r.date_from), "HH:mm")
+              } -- \u001b[1m${
+                datetime.format(new Date(r.date_to), "HH:mm")
+              }\u001b[0m`,
+            )
           }\u001b[0m ${
             SHOW_SEATS
               ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
               : ""
           }${r.room.variable_seating ? "" : colors.red(" · Fixed Seating")}${
+            r.room.type !== "Seminare / Kurse"
+              ? " \u001b[33m· Type: " + r.room.type + "\u001b[39m"
+              : ""
+          }${
             r.current_allocation
               ? colors.magenta(" · Note: Reserved for " + r.current_allocation)
               : ""
@@ -233,9 +277,7 @@ result.forEach((a) => {
       }
     } else if (SHOW_UNAVAILABLE) {
       console.log(
-        `${bdg} \u001b[2;9m${r.room.floor.padEnd(2)} ${
-          r.room.room.padEnd(5)
-        } Unavailable\u001b[0m`,
+        `${bdg} \u001b[2;9m${createRoomLink(r.room)} Unavailable\u001b[0m`,
       );
     }
   } else {

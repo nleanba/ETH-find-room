@@ -39,6 +39,7 @@ export interface RoomInfo {
   room: string;
   variable_seating: boolean;
   seats?: string;
+  type: string;
 }
 
 interface Availability_no {
