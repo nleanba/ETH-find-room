@@ -1,6 +1,4 @@
 import * as datetime from "https://deno.land/std@0.192.0/datetime/mod.ts";
-import * as colors from "https://deno.land/std@0.192.0/fmt/colors.ts";
-import { rooms } from "./rooms.ts";
 import {
   Availability,
   Belegungstyp,
@@ -8,6 +6,10 @@ import {
   Timeslot,
   TimeslotJSON,
 } from "./types.ts";
+import { rooms } from "./data.ts";
+import { Terminal } from "./terminal.ts";
+import { readKeypress } from "https://deno.land/x/keypress@0.0.11/mod.ts";
+import { writeAll } from "https://deno.land/std@0.192.0/streams/write_all.ts";
 
 const DATE: string = prompt(
   "Which day to check? (yyyy-MM-dd)",
@@ -55,24 +57,6 @@ const sunday = new Date(
 const DATEQUERY = `&from=${datetime.format(monday, "yyyy-MM-dd")}&to=${
   datetime.format(sunday, "yyyy-MM-dd")
 }`;
-
-function linkify(text: string, url: string) {
-  return `\u001b]8;;${url}\u001b\\${text}\u001b]8;;\u001b\\`;
-}
-
-function createRoomLink(room: RoomInfo) {
-  return linkify(
-    `${room.floor.padEnd(2)} ${room.room.padEnd(5)}`,
-    `https://ethz.ch/staffnet/de/utils/location.html?building=${room.building}&floor=${room.floor}&room=${room.room}`,
-  );
-}
-
-function createScheduleLink(room: RoomInfo, text: string) {
-  return linkify(
-    text,
-    `https://ethz.ch/staffnet/de/service/raeume-gebaeude/rauminfo/raumdetails/allocation.html?room=${room.building}+${room.floor}+${room.room}${DATEQUERY}`,
-  );
-}
 
 function isAvailable(
   data: Timeslot[],
@@ -177,7 +161,7 @@ async function checkAvailiable(
   );
 }
 
-const roomlist = rooms.filter((r) => {
+const roomlist = (await rooms()).filter((r) => {
   if (!FILTER_AREA.test(r.area)) return false;
   if (!FILTER_BDG.test(r.building)) return false;
   if (!SHOW_FIXED_SEATING && (!r.seating || r.seating !== "variabel")) {
@@ -202,6 +186,26 @@ console.log("Checking", roomlist.length, "rooms\n");
 
 const result = await Promise.allSettled(roomlist);
 
+const terminal = new Terminal(
+  DATEQUERY,
+  SHOW_LATER,
+  SHOW_FIXED_SEATING,
+  SHOW_SEATS,
+  SHOW_UNAVAILABLE,
+);
+terminal.renderResults(result);
+
+for await (const keypress of readKeypress()) {
+  if (keypress.key === "down") await terminal.moveDown();
+  if (keypress.key === "up") await terminal.moveUp();
+  if (keypress.key === "r") await terminal.paintFrame();
+  if ((keypress.ctrlKey && keypress.key === "c") || keypress.key === "q") {
+    await writeAll(Deno.stdout, new TextEncoder().encode("\u001b[?;25;h")); // show cursor
+    Deno.exit(0);
+  }
+}
+
+/*
 let failures = 0;
 let no_allocations = 0;
 let available = 0;
@@ -292,3 +296,4 @@ console.log(
   "rooms (this probably means that those schedules are not public)",
 );
 if (failures > 0) console.log("Had", failures, "failed requests");
+*/
