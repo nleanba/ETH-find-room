@@ -163,7 +163,7 @@ export class Terminal {
                 }${
                   r.current_allocation
                     ? (" " + codes.style(35) +
-                      "· Note: Reserved for " + r.current_allocation +
+                      "· Reserved: " + r.current_allocation +
                       codes.style())
                     : ""
                 }\u001b[0m`,

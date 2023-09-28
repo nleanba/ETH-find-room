@@ -4,9 +4,8 @@ import {
   Belegungstyp,
   RoomInfo,
   Timeslot,
-  TimeslotJSON,
 } from "./types.ts";
-import { rooms } from "./data.ts";
+import { getTimeslots, rooms } from "./data.ts";
 import { Terminal } from "./terminal.ts";
 import { readKeypress } from "https://deno.land/x/keypress@0.0.11/mod.ts";
 import { writeAll } from "https://deno.land/std@0.192.0/streams/write_all.ts";
@@ -136,21 +135,7 @@ async function checkAvailiable(
   room: RoomInfo,
   time: Date,
 ): Promise<Availability> {
-  // sometimes week-long events get missed if only a single day is queried
-  const url = `https://ethz.ch/bin/ethz/roominfo?path=/rooms/${
-    encodeURIComponent(`${room.building} ${room.floor} ${room.room}`)
-  }/allocations${DATEQUERY}`;
-
-  // console.log(url);
-
-  const json: TimeslotJSON[] = await fetch(url).then((r) => r.json());
-  const data: Timeslot[] = json.map((t) => {
-    return {
-      ...t,
-      date_from: datetime.parse(t.date_from, "yyyy-MM-ddTHH:mm:ss").getTime(),
-      date_to: datetime.parse(t.date_to, "yyyy-MM-ddTHH:mm:ss").getTime(),
-    };
-  });
+  const data: Timeslot[] = await getTimeslots(room, DATEQUERY);
 
   //data.sort((a, b) => b.date_from.getTime() - a.date_from.getTime());
 
