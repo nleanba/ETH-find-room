@@ -5,12 +5,15 @@ import { Availability, RoomInfo } from "./types.ts";
 const text = new TextEncoder();
 const output = async (t: string) => await writeAll(Deno.stdout, text.encode(t));
 
-// deno-lint-ignore no-control-regex
 const prinable_length = (text: string) =>
-  text.replace(
-    /\u001b\[[0-9:;<=>?]*[!"#$%&'()*+,-./ ]*[@A-Z[\\\]^_`a-z{|}~]/g,
-    "",
-  ).replace(/\u001b\]([^\u001b]|\u001b[^\\])*\u001b\\/g, "").length;
+  [
+    ...(text.replace(
+      // deno-lint-ignore no-control-regex
+      /\u001b\[[0-9:;<=>?]*[!"#$%&'()*+,-./ ]*[@A-Z[\\\]^_`a-z{|}~]/g,
+      "",
+      // deno-lint-ignore no-control-regex
+    ).replace(/\u001b\]([^\u001b]|\u001b[^\\])*\u001b\\/g, "")),
+  ].length;
 
 const fix_length = (text = "", length: number, fill = " ") => {
   const pl = prinable_length(text);
@@ -46,6 +49,7 @@ export class Terminal {
   SHOW_SEATS: boolean;
   SHOW_UNAVAILABLE: boolean;
   DATEQUERY: string;
+  TIME: Date;
   buffer: string[] = [];
   window_start = 0;
   selected = 0;
@@ -58,6 +62,7 @@ export class Terminal {
     SHOW_FIXED_SEATING: boolean,
     SHOW_SEATS: boolean,
     SHOW_UNAVAILABLE: boolean,
+    TIME: Date,
   ) {
     const { columns, rows } = Deno.consoleSize();
     this.rows = rows;
@@ -67,6 +72,7 @@ export class Terminal {
     this.SHOW_SEATS = SHOW_SEATS;
     this.SHOW_UNAVAILABLE = SHOW_UNAVAILABLE;
     this.DATEQUERY = DATEQUERY;
+    this.TIME = TIME;
   }
 
   createRoomLink(room: RoomInfo) {
@@ -81,6 +87,127 @@ export class Terminal {
       text,
       `https://ethz.ch/staffnet/de/service/raeume-gebaeude/rauminfo/raumdetails/allocation.html?room=${room.building}+${room.floor}+${room.room}${this.DATEQUERY}`,
     );
+  }
+
+  createTimeIndicator(length = 24, style = "") {
+    const H = parseInt(datetime.format(this.TIME, "HH"), 10);
+    const M = parseInt(datetime.format(this.TIME, "mm"), 10);
+
+    const hoursBefore = H;
+    const first = Math.round(M / (60 / 8));
+
+    if (hoursBefore >= length) return "·".repeat(length);
+
+    let result = "·".repeat(hoursBefore);
+    result += codes.style(31);
+    switch (first) {
+      case 0:
+        result += "▏";
+        break;
+      case 1:
+        result += "🭰"; //right 7/8
+        break;
+      case 2:
+        result += "🭱"; // right 3/4
+        break;
+      case 3:
+        result += "🭲"; // right 5/8
+        break;
+      case 4:
+        result += "🭳"; // right half
+        break;
+      case 5:
+        result += "🭴"; // right 3/8
+        break;
+      case 6:
+        result += "🭵"; // right 1/4
+        break;
+      case 7:
+        result += "▕"; // right 1/8th
+        break;
+      default:
+        result += "▕"; // space
+        break;
+    }
+
+    result += codes.style();
+    result += style;
+    result += "·".repeat(length - hoursBefore - 1);
+    return result;
+  }
+
+  createAvailabilityVisual(from: Date, to: Date, style = codes.style()) {
+    const fromH = parseInt(datetime.format(from, "HH"), 10);
+    const fromM = parseInt(datetime.format(from, "mm"), 10);
+    const toH = parseInt(datetime.format(to, "HH"), 10);
+    const toM = parseInt(datetime.format(to, "mm"), 10);
+
+    const hoursBefore = fromH;
+    const first = Math.round(fromM / (60 / 8));
+    const fullHours = toH - fromH - 1;
+    const last = Math.round(toM / (60 / 8));
+    let result = this.createTimeIndicator(hoursBefore, style);
+    switch (first) {
+      case 0:
+        result += "█"; // full block
+        break;
+      case 1:
+        result += "🮋"; //right 7/8
+        break;
+      case 2:
+        result += "🮊"; // right 3/4
+        break;
+      case 3:
+        result += "🮉"; // right 5/8
+        break;
+      case 4:
+        result += "▐"; // right half
+        break;
+      case 5:
+        result += "🮈"; // right 3/8
+        break;
+      case 6:
+        result += "🮇"; // right 1/4
+        break;
+      case 7:
+        result += "▕"; // right 1/8th
+        break;
+      default:
+        result += "·"; // space
+        break;
+    }
+    result += "".padEnd(fullHours, "█");
+    switch (last) {
+      case 0:
+        result += "·";
+        break;
+      case 1:
+        result += "▏";
+        break;
+      case 2:
+        result += "▎";
+        break;
+      case 3:
+        result += "▍";
+        break;
+      case 4:
+        result += "▌";
+        break;
+      case 5:
+        result += "▋";
+        break;
+      case 6:
+        result += "▊"; // left 3/4
+        break;
+      case 7:
+        result += "▉"; // left 7/8th
+        break;
+      default:
+        result += "█"; // full
+        break;
+    }
+    result += "".padEnd(23 - toH, "·");
+    return result;
   }
 
   async paintFrame(
@@ -105,7 +232,7 @@ export class Terminal {
       ("┌─ " + title + " ").padEnd(this.cols - 1, "─") +
         "┐",
     );
-    for (let i = 0; i < this.rows; ++i) {
+    for (let i = 0; i < this.rows - 1; ++i) {
       await output(codes.cursor_abs(i + 2, 1));
       await output(
         (i + this.window_start === this.selected ? "‣" : "│") +
@@ -116,7 +243,11 @@ export class Terminal {
       );
     }
     await output(codes.cursor_abs(this.rows, 1));
-    await output("└" + "".padEnd(this.cols - 2, "─") + "┘");
+    // await output("└" + "".padEnd(this.cols - 2, "─") + "┘");
+    await output(
+      "└" + "".padEnd(38, "─") + " " + this.createTimeIndicator() + " " +
+        "".padEnd(this.cols - 4 - 38 - 24, "─") + "┘",
+    );
   }
 
   async renderResults(result: PromiseSettledResult<Availability>[]) {
@@ -147,7 +278,13 @@ export class Terminal {
                       datetime.format(new Date(r.date_to), "HH:mm")
                     }\u001b[0m`,
                   )
-                }\u001b[2m ${
+                } \u001b[2m${
+                  this.createAvailabilityVisual(
+                    new Date(r.date_from),
+                    new Date(r.date_to),
+                    "\u001b[2m",
+                  )
+                } ${
                   this.SHOW_SEATS
                     ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
                     : ""
@@ -180,7 +317,12 @@ export class Terminal {
                     datetime.format(new Date(r.date_to), "HH:mm")
                   }\u001b[0m`,
                 )
-              }\u001b[0m ${
+              } ${
+                this.createAvailabilityVisual(
+                  new Date(r.date_from),
+                  new Date(r.date_to),
+                )
+              } \u001b[0m ${
                 this.SHOW_SEATS
                   ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
                   : ""
@@ -206,7 +348,9 @@ export class Terminal {
           this.buffer.push(
             `${bdg(r)} \u001b[2;9m${
               this.createRoomLink(r.room)
-            } Unavailable\u001b[0m`,
+            } Unavailable             \u001b[0m\u001b[2m ${
+              this.createTimeIndicator(24, "\u001b[2m")
+            }\u001b[0m`,
           );
         }
       } else {

@@ -1,10 +1,5 @@
 import * as datetime from "https://deno.land/std@0.192.0/datetime/mod.ts";
-import {
-  Availability,
-  Belegungstyp,
-  RoomInfo,
-  Timeslot,
-} from "./types.ts";
+import { Availability, Belegungstyp, RoomInfo, Timeslot } from "./types.ts";
 import { getTimeslots, rooms } from "./data.ts";
 import { Terminal } from "./terminal.ts";
 import { readKeypress } from "https://deno.land/x/keypress@0.0.11/mod.ts";
@@ -177,6 +172,7 @@ const terminal = new Terminal(
   SHOW_FIXED_SEATING,
   SHOW_SEATS,
   SHOW_UNAVAILABLE,
+  TIME,
 );
 terminal.renderResults(result);
 
