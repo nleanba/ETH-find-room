@@ -3,7 +3,8 @@ import { writeAll } from "https://deno.land/std@0.192.0/streams/write_all.ts";
 import { Availability, RoomInfo } from "./types.ts";
 
 const text = new TextEncoder();
-const output = async (t: string) => await writeAll(Deno.stdout, text.encode(t));
+export const output = async (t: string) =>
+  await writeAll(Deno.stdout, text.encode(t));
 
 const prinable_length = (text: string) =>
   [
@@ -32,10 +33,12 @@ const codes = {
   cursor_l_up: (n = 1) => escape(`${n}F`), // moves cursor n lines up and to the beginning of the line
   cursor_abs: (n = 1, m = 1) => escape(`${n};${m}H`), // moves cursor to position row=n col=m
   erase: (n = 3) => escape(`${n}J`), // erases screen. 0: cursor to end, 1: cursor to start, 2: entire screen, 3 default: entire screen and clear scrollback
-  style: (n = 0) => escape(`${n}m`),
+  style: (n: string | number = 0) => escape(`${n}m`),
   hide_cursor: () => escape(`?;25;l`),
   show_cursor: () => escape(`?;25;h`),
 };
+
+const key = (k: string) => codes.style("1;3") + k + codes.style();
 
 function linkify(text: string, url: string) {
   return `\u001b]8;;${url}\u001b\\${text}\u001b]8;;\u001b\\`;
@@ -219,21 +222,34 @@ export class Terminal {
     this.title = title;
 
     const scrollbar_begin = Math.floor(
-      (rows - 2) * this.window_start / this.buffer.length,
+      (rows - 4) * this.window_start / this.buffer.length,
     );
-    const scrollbar_end = ((rows - 2) * (rows - 2) / this.buffer.length) +
+    const scrollbar_end = ((rows - 4) * (rows - 4) / this.buffer.length) +
       scrollbar_begin;
-    const show_scollbar = rows - 2 < this.buffer.length;
+    const show_scollbar = rows - 4 < this.buffer.length;
 
     await output(codes.hide_cursor());
     await output(codes.cursor_abs(1, 1));
-    await output(codes.erase(3));
+    // await output(codes.erase(3));
+    // mark "clickable" letters with ${key("k")}
     await output(
-      ("┌─ " + title + " ").padEnd(this.cols - 1, "─") +
-        "┐",
+      `┌${"─".repeat(21)}┬d${"─".repeat(40)}┬building${
+        "─".repeat(this.cols - 84)
+      }┬area┬show┐`,
+      //("┌─ " + title + " ").padEnd(this.cols - 1, "─") + "┐",
     );
-    for (let i = 0; i < this.rows - 1; ++i) {
-      await output(codes.cursor_abs(i + 2, 1));
+    await output(
+      `│${" ".repeat(21)}│   Checked ${
+        datetime.format(this.TIME, "HH:mm")
+      } ${this.createTimeIndicator()}│${" ".repeat(this.cols - 76)}│    │fuls│`,
+    );
+    await output(
+      `├${"─".repeat(21)}┴${"─".repeat(41)}┴${
+        "─".repeat(this.cols - 76)
+      }┴────┴────┤`,
+    );
+    for (let i = 0; i < this.rows - 3; ++i) {
+      await output(codes.cursor_abs(i + 4, 1));
       await output(
         (i + this.window_start === this.selected ? "‣" : "│") +
           fix_length(this.buffer[this.window_start + i], this.cols - 2) +
@@ -243,14 +259,19 @@ export class Terminal {
       );
     }
     await output(codes.cursor_abs(this.rows, 1));
-    // await output("└" + "".padEnd(this.cols - 2, "─") + "┘");
     await output(
-      "└" + "".padEnd(38, "─") + " " + this.createTimeIndicator() + " " +
-        "".padEnd(this.cols - 4 - 38 - 24, "─") + "┘",
+      "└─" + fix_length(title, this.cols - 15, "─") +
+        `${key("r")}edraw─${key("q")}uit─┘`,
     );
+    // await output(
+    //   "└" + "─".repeat(24) + " Checked " + datetime.format(this.TIME, "HH:mm") +
+    //     " " + this.createTimeIndicator() + " " +
+    //     "─".repeat(this.cols - 4 - 38 - 24) + "┘",
+    // );
   }
 
   async renderResults(result: PromiseSettledResult<Availability>[]) {
+    await output("\n".repeat(this.rows));
     let failures = 0;
     let no_allocations = 0;
     let available = 0;
@@ -286,7 +307,7 @@ export class Terminal {
                   )
                 } ${
                   this.SHOW_SEATS
-                    ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
+                    ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(9)
                     : ""
                 }${
                   r.room.variable_seating
@@ -322,9 +343,9 @@ export class Terminal {
                   new Date(r.date_from),
                   new Date(r.date_to),
                 )
-              } \u001b[0m ${
+              } \u001b[0m${
                 this.SHOW_SEATS
-                  ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(10)
+                  ? (r.room.seats ? r.room.seats + " Seats" : "").padStart(9)
                   : ""
               }${
                 r.room.variable_seating
@@ -373,7 +394,7 @@ export class Terminal {
   }
 
   async scrollDown() {
-    if (this.window_start + this.rows - 2 >= this.buffer.length) {
+    if (this.window_start + this.rows - 4 >= this.buffer.length) {
       await this.paintFrame();
     }
     this.window_start += 1;
@@ -386,13 +407,13 @@ export class Terminal {
     if (this.selected <= this.window_start && this.selected > 0) {
       await this.scrollUp();
     } else {
-      if (this.selected - this.window_start + 3 < this.rows) {
+      if (this.selected - this.window_start + 5 < this.rows) {
         await output(
-          codes.cursor_abs(this.selected - this.window_start + 3, 1),
+          codes.cursor_abs(this.selected - this.window_start + 5, 1),
         );
         await output("│");
       }
-      await output(codes.cursor_abs(this.selected - this.window_start + 2, 1));
+      await output(codes.cursor_abs(this.selected - this.window_start + 4, 1));
       await output("‣");
     }
   }
@@ -401,19 +422,25 @@ export class Terminal {
     if (this.selected === this.buffer.length - 1) return;
     this.selected += 1;
     if (
-      this.selected >= this.window_start + this.rows - 3 &&
+      this.selected >= this.window_start + this.rows - 5 &&
       this.selected < this.buffer.length - 1
     ) {
       await this.scrollDown();
     } else {
       if (this.selected - this.window_start + 1 > 1) {
         await output(
-          codes.cursor_abs(this.selected - this.window_start + 1, 1),
+          codes.cursor_abs(this.selected - this.window_start + 3, 1),
         );
         await output("│");
       }
-      await output(codes.cursor_abs(this.selected - this.window_start + 2, 1));
+      await output(codes.cursor_abs(this.selected - this.window_start + 4, 1));
       await output("‣");
     }
+  }
+
+  async quit() {
+    await output(codes.cursor_abs(this.rows, this.cols));
+    await output("\n\u001b[?;25;h"); // show cursor
+    Deno.exit(0);
   }
 }

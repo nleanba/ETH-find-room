@@ -1,9 +1,8 @@
 import * as datetime from "https://deno.land/std@0.192.0/datetime/mod.ts";
 import { Availability, Belegungstyp, RoomInfo, Timeslot } from "./types.ts";
 import { getTimeslots, rooms } from "./data.ts";
-import { Terminal } from "./terminal.ts";
+import { Terminal, output } from "./terminal.ts";
 import { readKeypress } from "https://deno.land/x/keypress@0.0.11/mod.ts";
-import { writeAll } from "https://deno.land/std@0.192.0/streams/write_all.ts";
 
 const DATE: string = prompt(
   "Which day to check? (yyyy-MM-dd)",
@@ -180,10 +179,7 @@ for await (const keypress of readKeypress()) {
   if (keypress.key === "down") await terminal.moveDown();
   if (keypress.key === "up") await terminal.moveUp();
   if (keypress.key === "r") await terminal.paintFrame();
-  if ((keypress.ctrlKey && keypress.key === "c") || keypress.key === "q") {
-    await writeAll(Deno.stdout, new TextEncoder().encode("\u001b[?;25;h")); // show cursor
-    Deno.exit(0);
-  }
+  if ((keypress.ctrlKey && keypress.key === "c") || keypress.key === "q") await terminal.quit();
 }
 
 /*
