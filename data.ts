@@ -20,16 +20,20 @@ async function downloadRooms() {
     "https://ethz.ch/bin/ethz/roominfo?path=/rooms",
   )
     .then((r) => r.json());
-  localStorage.setItem("roomdata", JSON.stringify(data));
+  localStorage.setItem(
+    "roomdata",
+    JSON.stringify(data.filter((r) => r.type !== "Ausstellungsfläche")),
+  );
   return data;
 }
 
 export async function rooms(): Promise<typeof R> {
   const stored = localStorage.getItem("roomdata");
-  if (stored) return JSON.parse(stored);
+  if (stored) return JSON.parse(stored).filter((r) => r.type !== "Ausstellungsfläche");
   return await downloadRooms();
 }
 
+let inflight = 0;
 async function downloadTimeslots(
   room: RoomInfo,
   DATEQUERY: string,
@@ -39,18 +43,27 @@ async function downloadTimeslots(
     encodeURIComponent(`${room.building} ${room.floor} ${room.room}`)
   }/allocations${DATEQUERY}`;
 
-  console.log(`Querying ${url}.`)
+  console.log(`Querying ${url}.`);
 
   let json: TimeslotJSON[];
+
+  while (inflight > 8) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  }
+  inflight++;
 
   try {
     json = await fetch(url).then((r) => r.json());
   } catch (error) {
     console.warn("retrying", error);
-    json = await new Promise<TimeslotJSON[]>(resolve => setTimeout(() => {
-      return resolve(fetch(url).then((r) => r.json()));
-    }, 500))
+    json = await new Promise<TimeslotJSON[]>((resolve) =>
+      setTimeout(() => {
+        return resolve(fetch(url).then((r) => r.json()));
+      }, 500)
+    );
   }
+
+  inflight--;
 
   const data: Timeslot[] = json.map((t) => {
     return {
@@ -70,7 +83,18 @@ async function downloadTimeslots(
 
   storedData[DATEQUERY][room.building][room.floor][room.room] = data;
 
-  localStorage.setItem("roomdata_ts", JSON.stringify(storedData));
+  try {
+    localStorage.setItem("roomdata_ts", JSON.stringify(storedData));
+  } catch (e) {
+    if (e instanceof DOMException) {
+      const stored = localStorage.getItem("roomdata");
+      const data = Object.entries(storedData);
+      storedData = Object.fromEntries(data.sort().slice(-3));
+      localStorage.clear();
+      localStorage.setItem("roomdata", JSON.stringify(stored));
+      localStorage.setItem("roomdata_ts", JSON.stringify(storedData));
+    } else throw e;
+  }
 
   return data;
 }

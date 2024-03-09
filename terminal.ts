@@ -375,6 +375,7 @@ export class Terminal {
           );
         }
       } else {
+        console.log(a);
         ++failures;
       }
     });
